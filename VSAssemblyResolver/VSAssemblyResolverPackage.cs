@@ -334,13 +334,27 @@ namespace SergejDerjabkin.VSAssemblyResolver
         private static bool IsNameCompatible(AssemblyName fullName, AssemblyName partialName)
         {
             return partialName.Name == fullName.Name &&
-                   ((partialName.Version == null) || (partialName.Version == fullName.Version)) &&
-                   ((partialName.GetPublicKeyToken() == null ||
-                    partialName.GetPublicKeyToken().SequenceEqual(fullName.GetPublicKeyToken())));
+                   IsVersionCompatible(fullName.Version, partialName.Version) &&
+                   IsPublicKeyTokenCompatible(fullName.GetPublicKeyToken(), partialName.GetPublicKeyToken());
         }
 
+        /// <summary>
+        /// Determines if the assembly versions are compatible. The found version MUST be greater or equal to the requested version
+        /// and major versions must be the same (different major versions indicate non-backwards-compatible breaking changes).
+        /// </summary>
+        private static bool IsVersionCompatible(Version fullNameVersion, Version partialNameVersion)
+        {
+            return (partialNameVersion == null) ||
+                   (fullNameVersion >= partialNameVersion && fullNameVersion.Major == partialNameVersion.Major);
+        }
 
-
+        /// <summary>
+        /// Determines if the assembly public key tokens are compatible.
+        /// </summary>
+        private static bool IsPublicKeyTokenCompatible(byte[] fullNamePublicKeyToken, byte[] partialNamePublicKeyToken)
+        {
+            return partialNamePublicKeyToken == null || partialNamePublicKeyToken.SequenceEqual(fullNamePublicKeyToken);
+        }
 
         private bool IsMissingAssembly(string name)
         {
