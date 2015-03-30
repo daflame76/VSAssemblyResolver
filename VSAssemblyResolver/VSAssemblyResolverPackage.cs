@@ -301,40 +301,38 @@ namespace SergejDerjabkin.VSAssemblyResolver
         {
             var dirs = GetReferenceDirectories();
             AssemblyName asmName = new AssemblyName(name);
+            var bestMatches = new List<Tuple<AssemblyName, string>>();
 
-            foreach (var rootDir in dirs)
+            foreach (var rootDir in dirs.Where(Directory.Exists))
             {
-
-
-                if (Directory.Exists(rootDir))
+                WriteOutput("Looking for {0} in {1}", name, rootDir);
+                var subDirectories = Directory.GetDirectories(rootDir, "*.*", SearchOption.AllDirectories);
+                foreach (var foundNameAndPath in
+                    from dir in rootDir.ToEnumerable().Concat(subDirectories)
+                    let path = Path.Combine(dir, asmName.Name + ".dll")
+                    where File.Exists(path)
+                    select Tuple.Create(AssemblyName.GetAssemblyName(path), path))
                 {
-                    WriteOutput("Looking for {0} in {1}", name, rootDir);
-                    foreach (
-                        var dir in
-                            rootDir.ToEnumerable()
-                                   .Concat(Directory.GetDirectories(rootDir, "*.*", SearchOption.AllDirectories)))
-                    {
-                        string path = Path.Combine(dir, asmName.Name + ".dll");
-                        if (File.Exists(path))
-                        {
-                            var foundName = AssemblyName.GetAssemblyName(path);
+                    // If we have an exact match return the path now.
+                    if (IsNameCompatible(foundNameAndPath.Item1, asmName, true))
+                        return foundNameAndPath.Item2;
 
-                            if (IsNameCompatible(foundName, asmName))
-                            {
-                                return path;
-                            }
-                        }
-                    }
+                    if (IsNameCompatible(foundNameAndPath.Item1, asmName, false))
+                        bestMatches.Add(foundNameAndPath);
                 }
             }
 
-            return null;
+            if (bestMatches.Count == 0)
+                return null;
+
+            // Return the closest path match by comparing for the latest assembly version.
+            return bestMatches.MaxElement((x, y) => x.Item1.Version.CompareTo(y.Item1.Version)).Item2;
         }
 
-        private static bool IsNameCompatible(AssemblyName fullName, AssemblyName partialName)
+        private static bool IsNameCompatible(AssemblyName fullName, AssemblyName partialName, bool exactMatch = false)
         {
             return partialName.Name == fullName.Name &&
-                   IsVersionCompatible(fullName.Version, partialName.Version) &&
+                   IsVersionCompatible(fullName.Version, partialName.Version, exactMatch) &&
                    IsPublicKeyTokenCompatible(fullName.GetPublicKeyToken(), partialName.GetPublicKeyToken());
         }
 
@@ -342,10 +340,10 @@ namespace SergejDerjabkin.VSAssemblyResolver
         /// Determines if the assembly versions are compatible. The found version MUST be greater or equal to the requested version
         /// and major versions must be the same (different major versions indicate non-backwards-compatible breaking changes).
         /// </summary>
-        private static bool IsVersionCompatible(Version fullNameVersion, Version partialNameVersion)
+        private static bool IsVersionCompatible(Version fullNameVersion, Version partialNameVersion, bool exactMatch = false)
         {
-            return (partialNameVersion == null) ||
-                   (fullNameVersion >= partialNameVersion && fullNameVersion.Major == partialNameVersion.Major);
+            return (partialNameVersion == null) || (fullNameVersion == partialNameVersion) ||
+                   (!exactMatch && fullNameVersion >= partialNameVersion && fullNameVersion.Major == partialNameVersion.Major);
         }
 
         /// <summary>
